@@ -98,7 +98,7 @@ Is your site on this repository and you want to take it down? Send an email to t
 2. **Set Up Directories:** Before running the container, make sure the necessary data directories exist or can be created. For example, you can create and set ownership on these directories by running: 
 ```bash
 mkdir -p ${PWD}/har_and_cookies ${PWD}/generated_images
-sudo chown -R 1200:1201 ${PWD}/config ${PWD}/har_and_cookies ${PWD}/generated_images
+sudo chown -R 1200:1201 ${PWD}/g4f/config ${PWD}/har_and_cookies ${PWD}/generated_images
 ```
 3. **Run the Docker Container:** Use the following commands to pull the latest image and start the container (Only x64):
 ```bash

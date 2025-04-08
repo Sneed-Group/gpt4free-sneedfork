@@ -5,7 +5,7 @@ import logging
 from typing import Union, Optional, Coroutine, Dict, Any
 
 from . import debug, version
-from .models import Model
+from .models import Model, ModelUtils
 from .client import Client, AsyncClient
 from .typing import Messages, CreateResult, AsyncResult, ImageType
 from .errors import StreamNotSupportedError
@@ -58,15 +58,42 @@ class ChatCompletion:
         if auto_continue and not stream and not ignore_stream:
             import asyncio
             # Run in synchronous context
-            return asyncio.run(auto_continue_response(
-                model=model,
-                messages=messages,
-                provider=provider,
-                completion_model=completion_model,
-                max_attempts=continuation_attempts or 3,
-                stream=stream,
-                **kwargs
-            ))
+            try:
+                return asyncio.run(auto_continue_response(
+                    model=model,
+                    messages=messages,
+                    provider=provider,
+                    completion_model=completion_model,
+                    max_attempts=continuation_attempts or 3,
+                    stream=stream,
+                    **kwargs
+                ))
+            except Exception as e:
+                # If auto-continue fails, try to find an alternative provider from the model's list
+                model_obj = None
+                if isinstance(model, str):
+                    for model_name, candidate_model in ModelUtils.convert.items():
+                        if model_name == model:
+                            model_obj = candidate_model
+                            break
+                else:
+                    model_obj = model
+                
+                if model_obj and model_obj.best_provider:
+                    logger.warning(f"Auto-continue failed with provider {provider.__name__ if hasattr(provider, '__name__') else type(provider).__name__}. Trying alternative providers.")
+                    # Try with the model's best_provider directly
+                    return asyncio.run(auto_continue_response(
+                        model=model if isinstance(model, str) else model.name,
+                        messages=messages,
+                        provider=model_obj.best_provider,
+                        completion_model=completion_model,
+                        max_attempts=continuation_attempts or 3,
+                        stream=stream,
+                        **kwargs
+                    ))
+                else:
+                    # If we can't find alternatives, re-raise the original error
+                    raise e
         else:
             result = provider.get_create_function()(model, messages, stream=stream, **kwargs)
             return result if stream or ignore_stream else concat_chunks(result)
@@ -98,15 +125,42 @@ class ChatCompletion:
 
         # Use auto-continue response if enabled
         if auto_continue:
-            return auto_continue_response(
-                model=model,
-                messages=messages,
-                provider=provider,
-                completion_model=completion_model,
-                max_attempts=continuation_attempts or 3,
-                stream=stream,
-                **kwargs
-            )
+            try:
+                return auto_continue_response(
+                    model=model,
+                    messages=messages,
+                    provider=provider,
+                    completion_model=completion_model,
+                    max_attempts=continuation_attempts or 3,
+                    stream=stream,
+                    **kwargs
+                )
+            except Exception as e:
+                # If auto-continue fails, try to find an alternative provider from the model's list
+                model_obj = None
+                if isinstance(model, str):
+                    for model_name, candidate_model in ModelUtils.convert.items():
+                        if model_name == model:
+                            model_obj = candidate_model
+                            break
+                else:
+                    model_obj = model
+                
+                if model_obj and model_obj.best_provider:
+                    logger.warning(f"Auto-continue failed with provider {provider.__name__ if hasattr(provider, '__name__') else type(provider).__name__}. Trying alternative providers.")
+                    # Try with the model's best_provider directly
+                    return auto_continue_response(
+                        model=model if isinstance(model, str) else model.name,
+                        messages=messages,
+                        provider=model_obj.best_provider,
+                        completion_model=completion_model,
+                        max_attempts=continuation_attempts or 3,
+                        stream=stream,
+                        **kwargs
+                    )
+                else:
+                    # If we can't find alternatives, re-raise the original error
+                    raise e
         else:
             # Use standard flow without auto-continue
             result = provider.get_async_create_function()(model, messages, stream=stream, **kwargs)

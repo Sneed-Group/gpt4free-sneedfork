@@ -44,6 +44,7 @@ INCOMPLETE_PATTERNS = [
 ]
 
 MAX_CONTINUATION_ATTEMPTS = 3
+# Fallback completion model if the current model can't be used
 DEFAULT_COMPLETION_MODEL = "claude-3.7-sonnet"
 
 def is_balanced(text: str, open_char: str, close_char: str) -> bool:
@@ -103,7 +104,7 @@ def is_response_incomplete(text: str) -> bool:
     
     return False
 
-async def get_completion_check(text: str, model: str = DEFAULT_COMPLETION_MODEL) -> bool:
+async def get_completion_check(text: str, model: str) -> bool:
     """
     Use an LLM to determine if a response is complete.
     
@@ -149,7 +150,7 @@ async def auto_continue_response(
     model: str,
     messages: Messages,
     provider: Any = None,
-    completion_model: str = DEFAULT_COMPLETION_MODEL,
+    completion_model: Optional[str] = None,
     max_attempts: int = MAX_CONTINUATION_ATTEMPTS,
     **kwargs
 ) -> Union[str, AsyncResult]:
@@ -160,7 +161,7 @@ async def auto_continue_response(
         model: The model to use for the initial and continuation responses
         messages: The conversation messages
         provider: The provider to use
-        completion_model: The model to use for checking completion
+        completion_model: The model to use for checking completion (defaults to current model if None)
         max_attempts: Maximum number of continuation attempts
         **kwargs: Additional arguments to pass to the create_async function
         
@@ -169,6 +170,10 @@ async def auto_continue_response(
     """
     is_streaming = kwargs.get('stream', False)
     full_response = ""
+    
+    # Use the current model for completion check if not specified
+    if completion_model is None:
+        completion_model = model
     
     # Initial request
     try:
@@ -303,6 +308,18 @@ async def _handle_streaming_response(
     
     This is a more complex case as we need to buffer the stream to check completeness,
     then potentially request more content and continue streaming.
+    
+    Args:
+        response: The initial streaming response
+        model: The model to use for the initial and continuation responses
+        messages: The conversation messages
+        provider: The provider to use
+        completion_model: The model to use for checking completion
+        max_attempts: Maximum number of continuation attempts
+        **kwargs: Additional arguments to pass to the create_async function
+        
+    Returns:
+        AsyncGenerator yielding response chunks
     """
     full_response = ""
     attempts = 0

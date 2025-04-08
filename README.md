@@ -98,15 +98,14 @@ Is your site on this repository and you want to take it down? Send an email to t
 2. **Set Up Directories:** Before running the container, make sure the necessary data directories exist or can be created. For example, you can create and set ownership on these directories by running: 
 ```bash
 mkdir -p ${PWD}/har_and_cookies ${PWD}/generated_images
-sudo chown -R 1200:1201 ${PWD}/har_and_cookies ${PWD}/generated_images
+sudo chown -R 1200:1201 ${PWD}/config ${PWD}/har_and_cookies ${PWD}/generated_images
 ```
 3. **Run the Docker Container:** Use the following commands to pull the latest image and start the container (Only x64):
 ```bash
 docker pull hlohaus789/g4f
 docker run -p 8080:8080 -p 7900:7900 \
   --shm-size="2g" \
-  -v ${PWD}/har_and_cookies:/app/har_and_cookies \
-  -v ${PWD}/generated_images:/app/generated_images \
+  -v ${PWD}/:/app/ \
   hlohaus789/g4f:latest
 ```
 

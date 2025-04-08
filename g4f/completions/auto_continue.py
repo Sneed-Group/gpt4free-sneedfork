@@ -41,6 +41,18 @@ INCOMPLETE_PATTERNS = [
     r'(?<!\w)including\s*$',       # Ends with "including" followed by optional whitespace
     r'^\s*\d+\.\s+[^\n]*$',    # Numbered list item without a following item
     r'^\s*-\s+[^\n]*$',        # Bullet point without a following item
+    # Claude-specific pattern for mid-sentence truncation
+    r'(?<!\w)(?<!\.)$',        # Response ends mid-sentence without punctuation
+    r'if\s+you\s+have\s+any.*?$',  # Ends with partial closing statement
+    r'hope\s+this\s+helps.*?$',    # Ends with partial closing statement
+    r'(?<!\w)(to|with|by|in|on|at|from|as|for|about|through|like|into)\s+$', # Ends with preposition
+    r'(?<!\w)(is|am|are|was|were|be|been|being)\s+$',  # Ends with form of "to be"
+    r'(?<!\w)(a|an|the)\s+$',  # Ends with article
+    r'(?<!\w)(if|unless|while|when|whenever|wherever|because|since|as|although|though|even though|whereas|whether|rather|until)\s+$',  # Ends with subordinating conjunction
+    r'(?<!\w)(can|could|may|might|must|shall|should|will|would)\s+$',  # Ends with modal verb
+    r'(?<!\w)(let me know|please let me|do you have|would you like|if you need)\s+$', # Ends with transitional phrase
+    r'(?<!\w)(by implementing|by using|next steps)\s+$', # Ends with instructional transition
+    r'(?<!\w)(I(\s+would)?(\s+recommend)?|You(\s+should)?|We(\s+can)?)\s+$', # Ends with recommendation start
 ]
 
 MAX_CONTINUATION_ATTEMPTS = 3
@@ -111,23 +123,42 @@ def is_response_incomplete(text: str) -> bool:
     # Check for basic patterns that suggest an incomplete response
     for pattern in INCOMPLETE_PATTERNS:
         if re.search(pattern, text):
+            logger.info(f"Detected incomplete pattern: {pattern}")
             return True
 
     # Check for unbalanced parentheses, brackets, braces, etc.
     if not is_balanced(text, '(', ')'):
+        logger.info("Detected unbalanced parentheses")
         return True
     if not is_balanced(text, '[', ']'):
+        logger.info("Detected unbalanced brackets")
         return True
     if not is_balanced(text, '{', '}'):
+        logger.info("Detected unbalanced braces")
         return True
     
     # Check for incomplete code blocks
     if not is_code_block_complete(text):
+        logger.info("Detected incomplete code blocks")
         return True
     
     # Check for sentences that end abruptly or cut off
     sentences = re.split(r'(?<=[.!?])\s+', text)
     if sentences and len(sentences[-1]) > 5 and not re.search(r'[.!?]$', sentences[-1]):
+        logger.info("Detected sentence ending abruptly")
+        return True
+    
+    # Additional check for responses that seem too short to be complete
+    word_count = len(text.split())
+    
+    # If the response is very short and doesn't end with punctuation, it's likely incomplete
+    if word_count < 50 and not re.search(r'[.!?:]$', text.strip()):
+        logger.info("Detected short response without proper ending punctuation")
+        return True
+    
+    # Check for ending with a non-terminal conjunction or preposition
+    if re.search(r'(?<!\w)(in|on|at|to|with|from|as|by|for|about|like|through)\s*$', text):
+        logger.info("Detected response ending with non-terminal preposition")
         return True
     
     return False
@@ -143,15 +174,19 @@ async def get_completion_check(text: str, model: str) -> bool:
     Returns:
         True if the response is complete, False if it's incomplete
     """
+    # First check with heuristics for efficiency
+    if is_response_incomplete(text):
+        return False
+        
     try:
         messages = [
             {
                 "role": "system", 
-                "content": "You are an AI completeness detector. Your task is to determine if the provided text appears to be a complete response or if it seems to be cut off mid-response. Respond with ONLY 'COMPLETE' or 'INCOMPLETE'."
+                "content": "You are an AI completeness detector. Your task is to determine if the provided text appears to be a complete response or if it seems to be cut off mid-response or incomplete in any way. Pay close attention to whether the response finishes its thoughts and provides a proper conclusion. Respond with ONLY 'COMPLETE' or 'INCOMPLETE'."
             },
             {
                 "role": "user", 
-                "content": f"Analyze the following text and determine if it's a complete response or if it appears to be cut off:\n\n{text}"
+                "content": f"Analyze the following text and determine if it's a complete response or if it appears to be cut off or incomplete in any way:\n\n{text}"
             }
         ]
         
@@ -163,16 +198,44 @@ async def get_completion_check(text: str, model: str) -> bool:
         
         # Look for definitive markers in the response
         if "INCOMPLETE" in response.upper():
+            logger.info(f"LLM determined response is incomplete")
             return False
         elif "COMPLETE" in response.upper():
+            logger.info(f"LLM determined response is complete")
             return True
         else:
             # Default to heuristic check if the LLM response is unclear
+            logger.info(f"LLM response unclear, using heuristic check")
             return not is_response_incomplete(text)
     except Exception as e:
         logger.warning(f"Error using LLM to check completion status: {e}")
         # Fall back to heuristic check if LLM check fails
         return not is_response_incomplete(text)
+
+def get_continuation_prompt(model: str) -> str:
+    """
+    Get a model-specific continuation prompt.
+    
+    Different models respond better to different continuation prompts.
+    This function returns an appropriate prompt for the given model.
+    
+    Args:
+        model: The model name
+        
+    Returns:
+        A continuation prompt suitable for the model
+    """
+    # Claude-specific prompts
+    if 'claude' in model.lower():
+        return "Please continue your response exactly from where you left off, completing any incomplete sentences or thoughts. Do not repeat information you've already provided and do not summarize. Just continue as if you were never interrupted."
+    
+    # GPT-specific prompts
+    elif 'gpt' in model.lower():
+        return "Continue from where you left off. Do not repeat anything you've already said."
+    
+    # Default prompt for other models
+    else:
+        return "Continue from where you left off."
 
 async def auto_continue_response(
     model: str,
@@ -205,6 +268,7 @@ async def auto_continue_response(
     
     # Get the provider-specific model name
     provider_model = get_provider_specific_model_name(model, provider)
+    logger.info(f"Using provider {provider.__name__ if hasattr(provider, '__name__') else type(provider).__name__} with model {provider_model}")
     
     # Initial request
     try:
@@ -310,24 +374,33 @@ async def auto_continue_response(
     
     # For non-streaming response
     full_response = response
+    logger.info(f"Received initial response of length {len(full_response)} characters")
     attempts = 0
     
-    # Continue requesting more content if needed
-    while attempts < max_attempts:
+    # Force check and continue requesting more content if needed
+    # Always check at least once, even for seemingly complete responses
+    is_complete = False
+    while (not is_complete and attempts < max_attempts):
         # Check if response is complete
         is_complete = await get_completion_check(full_response, completion_model)
         if is_complete:
+            logger.info("Response determined to be complete")
             break
             
         logger.info(f"Detected incomplete response. Attempting continuation ({attempts+1}/{max_attempts})")
         
+        # Get the appropriate continuation prompt for this model
+        continuation_prompt = get_continuation_prompt(model)
+        logger.info(f"Using model-specific prompt for {model}: {continuation_prompt[:50]}...")
+        
         # Create continuation messages
         continuation_messages = messages.copy()
         continuation_messages.append({"role": "assistant", "content": full_response})
-        continuation_messages.append({"role": "user", "content": "Continue from where you left off."})
+        continuation_messages.append({"role": "user", "content": continuation_prompt})
         
         try:
             # Get continuation
+            logger.info(f"Requesting continuation from provider {provider.__name__ if hasattr(provider, '__name__') else type(provider).__name__}")
             continuation = await g4f.ChatCompletion.create_async(
                 model=get_provider_specific_model_name(model, provider),
                 messages=continuation_messages,
@@ -337,6 +410,7 @@ async def auto_continue_response(
             )
             
             # Append continuation to full response
+            logger.info(f"Received continuation of length {len(continuation)} characters")
             full_response += "\n" + continuation
             attempts += 1
         except Exception as e:
@@ -371,6 +445,7 @@ async def auto_continue_response(
                                     **{k: v for k, v in kwargs.items() if k != 'stream'}
                                 )
                                 # Append continuation to full response
+                                logger.info(f"Received continuation from alternative provider of length {len(continuation)} characters")
                                 full_response += "\n" + continuation
                                 # Update provider for future continuation attempts
                                 provider = alt_provider
@@ -392,6 +467,7 @@ async def auto_continue_response(
                                 **{k: v for k, v in kwargs.items() if k != 'stream'}
                             )
                             # Append continuation to full response
+                            logger.info(f"Received continuation from best provider of length {len(continuation)} characters")
                             full_response += "\n" + continuation
                             # Update provider for future continuation attempts
                             provider = model_obj.best_provider
@@ -401,12 +477,18 @@ async def auto_continue_response(
                 
                 # If no alternative provider was found or all failed, count this as a failed attempt
                 if not alternative_provider_found:
+                    logger.warning("No alternative provider was found or all failed")
                     attempts += 1
                     
             except Exception:
                 # If all alternatives fail, count this as a failed attempt
+                logger.warning("Exception while trying to find alternative providers")
                 attempts += 1
     
+    # Final check if we couldn't get a complete response after maximum attempts
+    if not is_complete:
+        logger.warning(f"Could not get a complete response after {max_attempts} attempts. Returning best effort.")
+
     return full_response
 
 async def _handle_streaming_response(
@@ -439,28 +521,38 @@ async def _handle_streaming_response(
     full_response = ""
     attempts = 0
     
-    # Stream the initial response
+    # Stream the initial response, collecting all chunks
     try:
         async for chunk in response:
             full_response += chunk
+            # We stream the chunks directly since we'll handle completeness
+            # after the entire initial response is received
             yield chunk
-            
-        # Continue streaming if response is incomplete
-        while attempts < max_attempts:
+        
+        # After getting the full initial response, check for completeness and continue if needed
+        # Always check at least once, even for seemingly complete responses
+        is_complete = False
+        while (not is_complete and attempts < max_attempts):
             # Check if the response is complete
             is_complete = await get_completion_check(full_response, completion_model)
             if is_complete:
+                logger.info("Streaming response determined to be complete")
                 break
                 
             logger.info(f"Detected incomplete streamed response. Attempting continuation ({attempts+1}/{max_attempts})")
             
+            # Get the appropriate continuation prompt for this model
+            continuation_prompt = get_continuation_prompt(model)
+            logger.info(f"Using model-specific prompt for {model}: {continuation_prompt[:50]}...")
+            
             # Create continuation messages
             continuation_messages = messages.copy()
             continuation_messages.append({"role": "assistant", "content": full_response})
-            continuation_messages.append({"role": "user", "content": "Continue from where you left off."})
+            continuation_messages.append({"role": "user", "content": continuation_prompt})
             
             try:
                 # Get continuation (non-streaming for simplicity)
+                logger.info(f"Requesting continuation from provider {provider.__name__ if hasattr(provider, '__name__') else type(provider).__name__}")
                 continuation = await g4f.ChatCompletion.create_async(
                     model=get_provider_specific_model_name(model, provider),
                     messages=continuation_messages,
@@ -470,6 +562,7 @@ async def _handle_streaming_response(
                 )
                 
                 # Append continuation to full response and yield
+                logger.info(f"Received continuation of length {len(continuation)} characters")
                 full_response += "\n" + continuation
                 yield "\n" + continuation
                 attempts += 1
@@ -505,6 +598,7 @@ async def _handle_streaming_response(
                                         **{k: v for k, v in kwargs.items() if k != 'stream'}
                                     )
                                     # Append continuation to full response
+                                    logger.info(f"Received continuation from alternative provider of length {len(continuation)} characters")
                                     full_response += "\n" + continuation
                                     yield "\n" + continuation
                                     # Update provider for future continuation attempts
@@ -527,6 +621,7 @@ async def _handle_streaming_response(
                                     **{k: v for k, v in kwargs.items() if k != 'stream'}
                                 )
                                 # Append continuation to full response and yield
+                                logger.info(f"Received continuation from best provider of length {len(continuation)} characters")
                                 full_response += "\n" + continuation
                                 yield "\n" + continuation
                                 # Update provider for future continuation attempts
@@ -537,11 +632,18 @@ async def _handle_streaming_response(
                     
                     # If no alternative provider was found or all failed, count this as a failed attempt
                     if not alternative_provider_found:
+                        logger.warning("No alternative provider was found or all failed")
                         attempts += 1
                         
                 except Exception:
                     # If all alternatives fail, count this as a failed attempt
+                    logger.warning("Exception while trying to find alternative providers")
                     attempts += 1
+        
+        # Final check if we couldn't get a complete response after maximum attempts
+        if not is_complete:
+            logger.warning(f"Could not get a complete streaming response after {max_attempts} attempts. Returning best effort.")
+    
     except Exception as e:
         # If streaming fails, log error and yield nothing more
         logger.error(f"Error during streaming: {e}")

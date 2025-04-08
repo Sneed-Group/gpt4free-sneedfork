@@ -13,7 +13,7 @@ from typing import List, Optional, Callable, Any, Union, AsyncGenerator, Dict
 import g4f
 from g4f.typing import Messages, AsyncResult
 from g4f.errors import ProviderNotFoundError
-from g4f.Provider import BaseRetryProvider
+from g4f.providers.retry_provider import IterListProvider
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +257,7 @@ async def auto_continue_response(
                     if model_name == model:
                         break
                 
-                if model_obj and model_obj.best_provider and isinstance(model_obj.best_provider, g4f.Provider.BaseRetryProvider):
+                if model_obj and model_obj.best_provider and isinstance(model_obj.best_provider, IterListProvider):
                     # Get a list of providers from the retry provider
                     for alt_provider in model_obj.best_provider.providers:
                         # Skip the provider that just failed
@@ -351,7 +351,7 @@ async def _handle_streaming_response(
                         if model_name == model:
                             break
                     
-                    if model_obj and model_obj.best_provider and isinstance(model_obj.best_provider, g4f.Provider.BaseRetryProvider):
+                    if model_obj and model_obj.best_provider and isinstance(model_obj.best_provider, IterListProvider):
                         # Get a list of providers from the retry provider
                         for alt_provider in model_obj.best_provider.providers:
                             # Skip the provider that just failed

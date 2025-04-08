@@ -1,7 +1,7 @@
 version: '3'
 
 services:
-  gpt4free:
+  gpt4free-sneedfork:
     image: hlohaus789/g4f:latest
     shm_size: 2gb
     build:

@@ -61,8 +61,9 @@ class ToolHandler:
         kwargs = {}
         if provider not in ("OpenaiAccount", "HuggingFaceAPI"):
             messages = messages.copy()
-            last_line = messages[-1]["content"].strip().splitlines()[-1]
-            content = f"Carry on from this point:\n{last_line}"
+            # Use the entire last message content instead of just the last line
+            last_message = messages[-1]["content"].strip()
+            content = f"Carry on from the previous message:\n{last_message}"
             messages.append({"role": "user", "content": content})
         else:
             # Enable provider native continue
@@ -301,8 +302,9 @@ def iter_run_tools(
                     )
                 elif function_name == TOOL_NAMES["CONTINUE"]:
                     if provider not in ("OpenaiAccount", "HuggingFace"):
-                        last_line = messages[-1]["content"].strip().splitlines()[-1]
-                        content = f"Carry on from this point:\n{last_line}"
+                        # Use the entire last message instead of just the last line
+                        last_message = messages[-1]["content"].strip()
+                        content = f"Carry on from the previous message:\n{last_message}"
                         messages.append({"role": "user", "content": content})
                     else:
                         # Enable provider native continue

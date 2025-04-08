@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import logging
-from typing import Union, Optional, Coroutine
+from typing import Union, Optional, Coroutine, Dict, Any
 
 from . import debug, version
 from .models import Model
@@ -13,6 +13,7 @@ from .cookies import get_cookies, set_cookies
 from .providers.types import ProviderType
 from .providers.helper import concat_chunks, async_concat_chunks
 from .client.service import get_model_and_provider
+from .completions import auto_continue_response
 
 #Configure "g4f" logger
 logger = logging.getLogger(__name__)
@@ -32,6 +33,9 @@ class ChatCompletion:
                image_name: Optional[str] = None,
                ignore_working: bool = False,
                ignore_stream: bool = False,
+               auto_continue: bool = True,
+               completion_model: Optional[str] = None,
+               continuation_attempts: Optional[int] = None,
                **kwargs) -> Union[CreateResult, str]:
         if image is not None:
             kwargs["media"] = [(image, image_name)]
@@ -50,9 +54,22 @@ class ChatCompletion:
         if ignore_stream:
             kwargs["ignore_stream"] = True
 
-        result = provider.get_create_function()(model, messages, stream=stream, **kwargs)
-
-        return result if stream or ignore_stream else concat_chunks(result)
+        # Skip auto-continue for streaming responses as that's handled separately
+        if auto_continue and not stream and not ignore_stream:
+            import asyncio
+            # Run in synchronous context
+            return asyncio.run(auto_continue_response(
+                model=model,
+                messages=messages,
+                provider=provider,
+                completion_model=completion_model,
+                max_attempts=continuation_attempts or 3,
+                stream=stream,
+                **kwargs
+            ))
+        else:
+            result = provider.get_create_function()(model, messages, stream=stream, **kwargs)
+            return result if stream or ignore_stream else concat_chunks(result)
 
     @staticmethod
     def create_async(model    : Union[Model, str],
@@ -63,6 +80,9 @@ class ChatCompletion:
                      image_name: Optional[str] = None,
                      ignore_stream: bool = False,
                      ignore_working: bool = False,
+                     auto_continue: bool = True,
+                     completion_model: Optional[str] = None,
+                     continuation_attempts: Optional[int] = None,
                      **kwargs) -> Union[AsyncResult, Coroutine[str]]:
         if image is not None:
             kwargs["media"] = [(image, image_name)]
@@ -76,10 +96,23 @@ class ChatCompletion:
         if ignore_stream:
             kwargs["ignore_stream"] = True
 
-        result = provider.get_async_create_function()(model, messages, stream=stream, **kwargs)
-
-        if not stream and not ignore_stream:
-            if hasattr(result, "__aiter__"):
-                result = async_concat_chunks(result)
-
-        return result
+        # Use auto-continue response if enabled
+        if auto_continue:
+            return auto_continue_response(
+                model=model,
+                messages=messages,
+                provider=provider,
+                completion_model=completion_model,
+                max_attempts=continuation_attempts or 3,
+                stream=stream,
+                **kwargs
+            )
+        else:
+            # Use standard flow without auto-continue
+            result = provider.get_async_create_function()(model, messages, stream=stream, **kwargs)
+            
+            if not stream and not ignore_stream:
+                if hasattr(result, "__aiter__"):
+                    result = async_concat_chunks(result)
+                    
+            return result

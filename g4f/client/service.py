@@ -8,14 +8,19 @@ from ..models import Model, ModelUtils, default, default_vision
 from ..Provider import ProviderUtils
 from ..providers.types import BaseRetryProvider, ProviderType
 from ..providers.retry_provider import IterListProvider
+from ..config import blacklist
 
 def convert_to_provider(provider: str) -> ProviderType:
     if " " in provider:
-        provider_list = [ProviderUtils.convert[p] for p in provider.split() if p in ProviderUtils.convert]
+        # Filter out blacklisted providers
+        provider_list = [ProviderUtils.convert[p] for p in provider.split() 
+                       if p in ProviderUtils.convert and not blacklist.is_blacklisted(p)]
         if not provider_list:
-            raise ProviderNotFoundError(f'Providers not found: {provider}')
+            raise ProviderNotFoundError(f'Providers not found or all are blacklisted: {provider}')
         provider = IterListProvider(provider_list, False)
     elif provider in ProviderUtils.convert:
+        if blacklist.is_blacklisted(provider):
+            raise ProviderNotFoundError(f'Provider is blacklisted: {provider}')
         provider = ProviderUtils.convert[provider]
     elif provider:
         raise ProviderNotFoundError(f'Provider not found: {provider}')
@@ -69,18 +74,37 @@ def get_model_and_provider(model    : Union[Model, str],
                 provider = model.best_provider
         elif isinstance(model, str):
             if model in ProviderUtils.convert:
+                provider_name = model
+                if blacklist.is_blacklisted(provider_name):
+                    raise ProviderNotFoundError(f'Provider is blacklisted: {provider_name}')
                 provider = ProviderUtils.convert[model]
                 model = getattr(provider, "default_model", "")
             else:
                 raise ModelNotFoundError(f'Model not found: {model}')
         elif isinstance(model, Model):
             provider = model.best_provider
+            # If best provider is blacklisted, try to find an alternative
+            provider_name = provider.__name__ if hasattr(provider, "__name__") else type(provider).__name__
+            if blacklist.is_blacklisted(provider_name):
+                # Try all providers that work with this model instead
+                for alt_provider in model.providers:
+                    alt_name = alt_provider.__name__ if hasattr(alt_provider, "__name__") else type(alt_provider).__name__
+                    if not blacklist.is_blacklisted(alt_name) and alt_provider.working:
+                        provider = alt_provider
+                        break
+                # If all providers are blacklisted, raise an error
+                if blacklist.is_blacklisted(provider_name):
+                    raise ProviderNotFoundError(f'All providers for model {model.name} are blacklisted')
         else:
             raise ValueError(f"Unexpected type: {type(model)}")
     if not provider:
         raise ProviderNotFoundError(f'No provider found for model: {model}')
 
     provider_name = provider.__name__ if hasattr(provider, "__name__") else type(provider).__name__
+
+    # Check if the provider is blacklisted
+    if blacklist.is_blacklisted(provider_name):
+        raise ProviderNotFoundError(f'Provider is blacklisted: {provider_name}')
 
     if isinstance(model, Model):
         model = model.name
@@ -90,7 +114,14 @@ def get_model_and_provider(model    : Union[Model, str],
 
     if isinstance(provider, BaseRetryProvider):
         if not ignore_working:
-            provider.providers = [p for p in provider.providers if p.working]
+            # Filter out blacklisted providers from the retry provider
+            provider.providers = [p for p in provider.providers 
+                                if p.working and not blacklist.is_blacklisted(
+                                    p.__name__ if hasattr(p, "__name__") else type(p).__name__
+                                )]
+            # If all providers are blacklisted, raise an error
+            if not provider.providers:
+                raise ProviderNotFoundError(f'All providers have been blacklisted or are not working')
 
     if not ignore_stream and not provider.supports_stream and stream:
         raise StreamNotSupportedError(f'{provider_name} does not support "stream" argument')

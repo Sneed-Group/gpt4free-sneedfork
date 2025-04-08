@@ -34,6 +34,9 @@ class ChatCompletionsConfig(BaseModel):
     return_conversation: Optional[bool] = None
     history_disabled: Optional[bool] = None
     timeout: Optional[int] = None
+    auto_continue: Optional[bool] = True
+    completion_model: Optional[str] = None
+    continuation_attempts: Optional[int] = None
     tool_calls: list = Field(default=[], examples=[[
 		{
 			"function": {

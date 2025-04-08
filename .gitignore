@@ -68,5 +68,8 @@ g4f/Provider/OpenaiChat2.py
 generated_images/
 projects/windows/
 
+# Provider blacklist configuration
+g4f/config/provider_blacklist.json
+
 *.bak
 *.backup

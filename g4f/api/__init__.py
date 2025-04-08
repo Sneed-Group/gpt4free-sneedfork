@@ -132,11 +132,29 @@ class AppConfig:
     proxy: str = None
     gui: bool = False
     demo: bool = False
+    auto_continue: bool = True
+    completion_model: str = None
+    continuation_attempts: int = 3
 
     @classmethod
     def set_config(cls, **data):
         for key, value in data.items():
             setattr(cls, key, value)
+        
+    @classmethod
+    def is_provider_available(cls, provider_name: str) -> bool:
+        """Check if a provider is available (not ignored and not blacklisted)."""
+        from ..config import blacklist
+        
+        # Check if provider is ignored
+        if cls.ignored_providers and provider_name in cls.ignored_providers:
+            return False
+            
+        # Check if provider is blacklisted
+        if blacklist.is_blacklisted(provider_name):
+            return False
+            
+        return True
 
 class Api:
     def __init__(self, app: FastAPI) -> None:
@@ -342,6 +360,9 @@ class Api:
                             "model": AppConfig.model,
                             "provider": AppConfig.provider,
                             "proxy": AppConfig.proxy,
+                            "auto_continue": config.auto_continue if config.auto_continue is not None else AppConfig.auto_continue,
+                            "completion_model": config.completion_model or AppConfig.completion_model,
+                            "continuation_attempts": config.continuation_attempts or AppConfig.continuation_attempts,
                             **config.dict(exclude_none=True),
                             **{
                                 "conversation_id": None,
@@ -442,21 +463,31 @@ class Api:
             HTTP_200_OK: {"model": List[ProviderResponseModel]},
         })
         async def providers():
+            from ..config import blacklist
             return [{
                 'id': provider.__name__,
                 'object': 'provider',
                 'created': 0,
                 'url': provider.url,
                 'label': getattr(provider, "label", None),
-            } for provider in __providers__ if provider.working]
+            } for provider in __providers__ 
+              if provider.working and 
+                 not blacklist.is_blacklisted(provider.__name__)]
 
         @self.app.get("/v1/providers/{provider}", responses={
             HTTP_200_OK: {"model": ProviderResponseDetailModel},
             HTTP_404_NOT_FOUND: {"model": ErrorResponseModel},
         })
         async def providers_info(provider: str):
+            from ..config import blacklist
+            
             if provider not in ProviderUtils.convert:
                 return ErrorResponse.from_message("The provider does not exist.", 404)
+            
+            # Check if the provider is blacklisted
+            if blacklist.is_blacklisted(provider):
+                return ErrorResponse.from_message("The provider is blacklisted.", 403)
+                
             provider: ProviderType = ProviderUtils.convert[provider]
             def safe_get_models(provider: ProviderType) -> list[str]:
                 try:

@@ -13,6 +13,7 @@ from typing import List, Optional, Callable, Any, Union, AsyncGenerator, Dict
 import g4f
 from g4f.typing import Messages, AsyncResult
 from g4f.errors import ProviderNotFoundError
+from g4f.Provider import BaseRetryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -170,12 +171,38 @@ async def auto_continue_response(
     full_response = ""
     
     # Initial request
-    response = await g4f.ChatCompletion.create_async(
-        model=model,
-        messages=messages,
-        provider=provider,
-        **kwargs
-    )
+    try:
+        response = await g4f.ChatCompletion.create_async(
+            model=model,
+            messages=messages,
+            provider=provider,
+            **kwargs
+        )
+    except Exception as e:
+        logger.error(f"Error during initial request: {e}")
+        # Try to get an alternative provider if there was an error
+        try:
+            model_obj = None
+            for model_name, model_obj in g4f.models.ModelUtils.convert.items():
+                if model_name == model:
+                    break
+            
+            if model_obj and model_obj.best_provider and model_obj.best_provider != provider:
+                logger.info(f"Trying alternative provider for model {model}")
+                response = await g4f.ChatCompletion.create_async(
+                    model=model,
+                    messages=messages,
+                    provider=model_obj.best_provider,
+                    **kwargs
+                )
+                # Update provider for future continuation attempts
+                provider = model_obj.best_provider
+            else:
+                # Re-raise if we couldn't find an alternative
+                raise
+        except Exception:
+            # If alternative also fails, re-raise the original error
+            raise e
     
     # Handle streaming response differently
     if is_streaming:
@@ -221,8 +248,44 @@ async def auto_continue_response(
             full_response += "\n" + continuation
             attempts += 1
         except Exception as e:
-            logger.error(f"Error during continuation attempt: {e}")
-            break
+            logger.error(f"Error during continuation attempt with provider {provider.__name__ if hasattr(provider, '__name__') else type(provider).__name__}: {e}")
+            
+            # Try with a different provider
+            try:
+                model_obj = None
+                for model_name, model_obj in g4f.models.ModelUtils.convert.items():
+                    if model_name == model:
+                        break
+                
+                if model_obj and model_obj.best_provider and isinstance(model_obj.best_provider, g4f.Provider.BaseRetryProvider):
+                    # Get a list of providers from the retry provider
+                    for alt_provider in model_obj.best_provider.providers:
+                        # Skip the provider that just failed
+                        if alt_provider == provider:
+                            continue
+                        
+                        logger.info(f"Trying alternative provider {alt_provider.__name__ if hasattr(alt_provider, '__name__') else type(alt_provider).__name__} for continuation")
+                        try:
+                            continuation = await g4f.ChatCompletion.create_async(
+                                model=model,
+                                messages=continuation_messages,
+                                provider=alt_provider,
+                                stream=False,
+                                **{k: v for k, v in kwargs.items() if k != 'stream'}
+                            )
+                            # Append continuation to full response
+                            full_response += "\n" + continuation
+                            # Update provider for future continuation attempts
+                            provider = alt_provider
+                            break
+                        except Exception as alt_e:
+                            logger.error(f"Alternative provider also failed: {alt_e}")
+                            continue
+                    
+                attempts += 1
+            except Exception:
+                # If all alternatives fail, count this as a failed attempt
+                attempts += 1
     
     return full_response
 
@@ -249,40 +312,76 @@ async def _handle_streaming_response(
         async for chunk in response:
             full_response += chunk
             yield chunk
-    except Exception as e:
-        logger.error(f"Error during initial streaming response: {e}")
-        return
-    
-    # Continue requesting more content if needed
-    while attempts < max_attempts:
-        # Check if response is complete
-        is_complete = await get_completion_check(full_response, completion_model)
-        if is_complete:
-            break
             
-        logger.info(f"Detected incomplete streaming response. Attempting continuation ({attempts+1}/{max_attempts})")
-        
-        # Create continuation messages
-        continuation_messages = messages.copy()
-        continuation_messages.append({"role": "assistant", "content": full_response})
-        continuation_messages.append({"role": "user", "content": "Continue from where you left off."})
-        
-        try:
-            # Get continuation
-            continuation_response = await g4f.ChatCompletion.create_async(
-                model=model,
-                messages=continuation_messages,
-                provider=provider,
-                stream=True,
-                **{k: v for k, v in kwargs.items() if k != 'stream'}
-            )
-            
-            # Stream the continuation
-            async for chunk in continuation_response:
-                full_response += chunk
-                yield chunk
+        # Continue streaming if response is incomplete
+        while attempts < max_attempts:
+            # Check if the response is complete
+            is_complete = await get_completion_check(full_response, completion_model)
+            if is_complete:
+                break
                 
-            attempts += 1
-        except Exception as e:
-            logger.error(f"Error during continuation streaming: {e}")
-            break 
+            logger.info(f"Detected incomplete streamed response. Attempting continuation ({attempts+1}/{max_attempts})")
+            
+            # Create continuation messages
+            continuation_messages = messages.copy()
+            continuation_messages.append({"role": "assistant", "content": full_response})
+            continuation_messages.append({"role": "user", "content": "Continue from where you left off."})
+            
+            try:
+                # Get continuation (non-streaming for simplicity)
+                continuation = await g4f.ChatCompletion.create_async(
+                    model=model,
+                    messages=continuation_messages,
+                    provider=provider,
+                    stream=False,
+                    **{k: v for k, v in kwargs.items() if k != 'stream'}
+                )
+                
+                # Append continuation to full response and yield
+                full_response += "\n" + continuation
+                yield "\n" + continuation
+                attempts += 1
+            except Exception as e:
+                logger.error(f"Error during streaming continuation attempt with provider {provider.__name__ if hasattr(provider, '__name__') else type(provider).__name__}: {e}")
+                
+                # Try with a different provider
+                try:
+                    model_obj = None
+                    for model_name, model_obj in g4f.models.ModelUtils.convert.items():
+                        if model_name == model:
+                            break
+                    
+                    if model_obj and model_obj.best_provider and isinstance(model_obj.best_provider, g4f.Provider.BaseRetryProvider):
+                        # Get a list of providers from the retry provider
+                        for alt_provider in model_obj.best_provider.providers:
+                            # Skip the provider that just failed
+                            if alt_provider == provider:
+                                continue
+                            
+                            logger.info(f"Trying alternative provider {alt_provider.__name__ if hasattr(alt_provider, '__name__') else type(alt_provider).__name__} for streaming continuation")
+                            try:
+                                continuation = await g4f.ChatCompletion.create_async(
+                                    model=model,
+                                    messages=continuation_messages,
+                                    provider=alt_provider,
+                                    stream=False,
+                                    **{k: v for k, v in kwargs.items() if k != 'stream'}
+                                )
+                                # Append continuation to full response
+                                full_response += "\n" + continuation
+                                yield "\n" + continuation
+                                # Update provider for future continuation attempts
+                                provider = alt_provider
+                                break
+                            except Exception as alt_e:
+                                logger.error(f"Alternative streaming provider also failed: {alt_e}")
+                                continue
+                        
+                    attempts += 1
+                except Exception:
+                    # If all alternatives fail, count this as a failed attempt
+                    attempts += 1
+    except Exception as e:
+        # If streaming fails, log error and yield nothing more
+        logger.error(f"Error during streaming: {e}")
+        # We don't raise here as we've already yielded some content 

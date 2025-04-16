@@ -9,6 +9,7 @@ from ..requests import Session, StreamSession, get_args_from_nodriver, raise_for
 from ..requests import DEFAULT_HEADERS, has_nodriver, has_curl_cffi
 from ..providers.response import FinishReason, Usage
 from ..errors import ResponseStatusError, ModelNotFoundError
+from .helper import to_string
 
 class Cloudflare(AsyncGeneratorProvider, ProviderModelMixin, AuthFileMixin):
     label = "Cloudflare AI"
@@ -30,7 +31,12 @@ class Cloudflare(AsyncGeneratorProvider, ProviderModelMixin, AuthFileMixin):
         "llama-3.1-8b": "@cf/meta/llama-3.1-8b-instruct-awq",
         "llama-3.1-8b": "@cf/meta/llama-3.1-8b-instruct-fp8",
         "llama-3.2-1b": "@cf/meta/llama-3.2-1b-instruct",
+        "llama-4-scout": "@cf/meta/llama-4-scout-17b-16e-instruct",
+        "deepseek-math-7b": "@cf/deepseek-ai/deepseek-math-7b-instruct",
+        "deepseek-r1-qwen-32b": "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+        "falcon-7b": "@cf/tiiuae/falcon-7b-instruct",
         "qwen-1.5-7b": "@cf/qwen/qwen1.5-7b-chat-awq",
+        "qwen-2.5-coder": "@cf/qwen/qwen2.5-coder-32b-instruct",
     }
     _args: dict = None
 
@@ -84,8 +90,8 @@ class Cloudflare(AsyncGeneratorProvider, ProviderModelMixin, AuthFileMixin):
         data = {
             "messages": [{
                 **message,
-                "content": message["content"] if isinstance(message["content"], str) else "",
-                "parts": [{"type":"text", "text":message["content"]}] if isinstance(message["content"], str) else message} for message in messages],
+                "content": to_string(message["content"]),
+                "parts": [{"type":"text", "text": to_string(message["content"])}]} for message in messages],
             "lora": None,
             "model": model,
             "max_tokens": max_tokens,

@@ -865,17 +865,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ## ⭐ Star History
 
-<a href="https://github.com/xtekky/gpt4free/stargazers">
-        <img width="500" alt="Star History Chart" src="https://api.star-history.com/svg?repos=xtekky/gpt4free&type=Date">
-</a>
+<!--![Star History Chart](https://api.star-history.com/svg?repos=xtekky/gpt4free&type=Date)-->
 
+<img src="https://github.com/user-attachments/assets/1624121d-4ee1-4553-913e-00dbd937e61f" width="800" alt="Star History Chart">
 
 ## 📄 License
 
 <table>
   <tr>
      <td>
-       <p align="center"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/GPLv3_Logo.svg/1200px-GPLv3_Logo.svg.png" width="80%"></img>
+       <p align="center"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/GPLv3_Logo.svg/1200px-GPLv3_Logo.svg.png" width="120"></img>
     </td>
     <td> 
       <img src="https://img.shields.io/badge/License-GNU_GPL_v3.0-red.svg"/> <br> 

@@ -150,13 +150,13 @@ gpt_4 = Model(
 gpt_4o = VisionModel(
     name          = 'gpt-4o',
     base_provider = 'OpenAI',
-    best_provider = IterListProvider([Blackbox, Jmuz, ChatGptEs, PollinationsAI, Liaobots, OpenaiChat])
+    best_provider = IterListProvider([Liaobots, Jmuz, ChatGptEs, PollinationsAI, OpenaiChat, Blackbox])
 )
 
 gpt_4o_mini = Model(
     name          = 'gpt-4o-mini',
     base_provider = 'OpenAI',
-    best_provider = IterListProvider([DDG, Blackbox, ChatGptEs, TypeGPT, PollinationsAI, OIVSCode, Liaobots, Jmuz, OpenaiChat])
+    best_provider = IterListProvider([DDG, ChatGptEs, TypeGPT, PollinationsAI, OIVSCode, Liaobots, Jmuz, OpenaiChat, Blackbox])
 )
 
 gpt_4o_audio = AudioModel(
@@ -169,7 +169,7 @@ gpt_4o_audio = AudioModel(
 o1 = Model(
     name          = 'o1',
     base_provider = 'OpenAI',
-    best_provider = IterListProvider([Blackbox, Copilot, OpenaiAccount])
+    best_provider = IterListProvider([Copilot, Blackbox, OpenaiAccount])
 )
 
 o1_mini = Model(
@@ -182,7 +182,7 @@ o1_mini = Model(
 o3_mini = Model(
     name          = 'o3-mini',
     base_provider = 'OpenAI',
-    best_provider = IterListProvider([DDG, Blackbox, Liaobots])
+    best_provider = IterListProvider([DDG, Liaobots, Blackbox])
 )
 
 ### GigaChat ###
@@ -263,7 +263,7 @@ llama_3_2_90b = Model(
 llama_3_3_70b = Model(
     name          = "llama-3.3-70b",
     base_provider = "Meta Llama",
-    best_provider = IterListProvider([Blackbox, DDG, DeepInfraChat, LambdaChat, PollinationsAI, Jmuz, HuggingChat, HuggingFace])
+    best_provider = IterListProvider([DDG, HuggingChat, HuggingFace, DeepInfraChat, LambdaChat, PollinationsAI, Jmuz, Blackbox])
 )
 
 llama_4_scout = Model(
@@ -293,7 +293,7 @@ mistral_nemo = Model(
 mixtral_small_24b = Model(
     name          = "mixtral-small-24b",
     base_provider = "Mistral",
-    best_provider = IterListProvider([Blackbox, DDG, DeepInfraChat])
+    best_provider = IterListProvider([DDG, Blackbox, DeepInfraChat])
 )
 
 ### NousResearch ###
@@ -389,14 +389,14 @@ claude_3_haiku = Model(
 claude_3_5_sonnet = Model(
     name          = 'claude-3.5-sonnet',
     base_provider = 'Anthropic',
-    best_provider = IterListProvider([Blackbox, Jmuz, Liaobots])
+    best_provider = IterListProvider([Jmuz, Liaobots, Blackbox])
 )
 
 # claude 3.7
 claude_3_7_sonnet = Model(
     name          = 'claude-3.7-sonnet',
     base_provider = 'Anthropic',
-    best_provider = IterListProvider([Blackbox, Liaobots])
+    best_provider = IterListProvider([Liaobots, Blackbox])
 )
 
 ### Reka AI ###
@@ -497,7 +497,7 @@ qwen_2_5_max = Model(
 qwq_32b = Model(
     name = 'qwq-32b',
     base_provider = 'Qwen',
-    best_provider = IterListProvider([Blackbox, Jmuz, HuggingChat])
+    best_provider = IterListProvider([HuggingChat, Blackbox, Jmuz])
 )
 qvq_72b = VisionModel(
     name = 'qvq-72b',
@@ -516,19 +516,19 @@ pi = Model(
 deepseek_chat = Model(
     name = 'deepseek-chat',
     base_provider = 'DeepSeek',
-    best_provider = IterListProvider([Blackbox, Jmuz])
+    best_provider = IterListProvider([Jmuz, Blackbox])
 )
 
 deepseek_v3 = Model(
     name = 'deepseek-v3',
     base_provider = 'DeepSeek',
-    best_provider = IterListProvider([Blackbox, DeepInfraChat, LambdaChat, PollinationsAI, OIVSCode, TypeGPT, Liaobots])
+    best_provider = IterListProvider([Liaobots, DeepInfraChat, LambdaChat, PollinationsAI, OIVSCode, TypeGPT, Blackbox])
 )
 
 deepseek_r1 = Model(
     name = 'deepseek-r1',
     base_provider = 'DeepSeek',
-    best_provider = IterListProvider([Blackbox, DeepInfraChat, Glider, LambdaChat, PollinationsAI, TypeGPT, Liaobots, Jmuz, HuggingChat, HuggingFace])
+    best_provider = IterListProvider([HuggingChat, HuggingFace, Liaobots, Jmuz, DeepInfraChat, Glider, LambdaChat, PollinationsAI, TypeGPT, Blackbox])
 )
 
 janus_pro_7b = VisionModel(
@@ -729,7 +729,7 @@ sd_3_5 = ImageModel(
 flux = ImageModel(
     name = 'flux',
     base_provider = 'Black Forest Labs',
-    best_provider = IterListProvider([Blackbox, PollinationsImage, Websim, HuggingSpace, ARTA])
+    best_provider = IterListProvider([Websim, HuggingSpace, ARTA, PollinationsImage, Blackbox])
 )
 
 flux_pro = ImageModel(
